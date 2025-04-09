@@ -69,6 +69,7 @@ return ch;
 
 void StartLedTask(void *argument) {
   uint8_t ledState = 0;
+  vTaskSuspend( NULL); // Suspend itself);
   printf("Entering LedTask\n");
   for (;;) {
     ledState = !ledState;
@@ -80,18 +81,20 @@ void StartLedTask(void *argument) {
 
 void TaskGive(void *argument) {
   uint32_t delay = 100;
+  vTaskSuspend( NULL); // Suspend itself);
   for (;;) {
     printf("TaskGive: Sending delay value %lu to queue\r\n", delay);
     if (xQueueSend(QueueTask, &delay, pdMS_TO_TICKS(100)) != pdPASS) {
       printf("TaskGive: Failed to send delay value to queue\r\n");
     }
     delay += 100; // Increment delay
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(delay));
   }
 }
 
 void TaskTake(void *argument) {
   uint32_t receivedValue = 0;
+  vTaskSuspend( NULL); // Suspend itself);
   for (;;) {
     printf("TaskTake: Waiting to receive value from queue\r\n");
     if (xQueueReceive(QueueTask, &receivedValue, pdMS_TO_TICKS(1000)) == pdPASS) {
@@ -100,6 +103,7 @@ void TaskTake(void *argument) {
       printf("TaskTake: Failed to receive value from queue within 1000 ms. Triggering system reset.\r\n");
       vTaskDelay(pdMS_TO_TICKS(10));
       NVIC_SystemReset(); // Trigger reset
+
     }
   }
 }
