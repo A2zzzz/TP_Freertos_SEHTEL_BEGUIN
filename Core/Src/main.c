@@ -48,7 +48,6 @@
 TaskHandle_t LedTaskHandle;
 TaskHandle_t TaskGiveHandle;
 TaskHandle_t TaskTakeHandle;
-SemaphoreHandle_t BinarySemaphore;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -81,9 +80,9 @@ void StartLedTask(void *argument) {
 void TaskGive(void *argument) {
   uint32_t delay = 100;
   for (;;) {
-    printf("TaskGive: About to give the semaphore\r\n");
-    xSemaphoreGive(BinarySemaphore);
-    printf("TaskGive: Semaphore given\r\n");
+    printf("TaskGive: About to notify TaskTake\r\n");
+    xTaskNotifyGive(TaskTakeHandle); // Send notification to TaskTake
+    printf("TaskGive: Notification sent\r\n");
     vTaskDelay(pdMS_TO_TICKS(delay));
     //delay += 100; // Increment delay for testing
   }
@@ -91,11 +90,12 @@ void TaskGive(void *argument) {
 
 void TaskTake(void *argument) {
   for (;;) {
-    printf("TaskTake: Waiting to take the semaphore\r\n");
-    if (xSemaphoreTake(BinarySemaphore, pdMS_TO_TICKS(1000)) == pdTRUE) {
-      printf("TaskTake: Semaphore taken\r\n");
-    } else {
-      printf("TaskTake: Failed to take semaphore for 1000 ms. Triggering system reset.\r\n");
+    printf("TaskTake: Waiting for notification\r\n");
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000)); // Wait for notification
+    printf("TaskTake: Notification received\r\n");
+    // If timeout occurs, reset the system
+    if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000)) == pdFALSE) {
+      printf("TaskTake: Failed to receive notification for 1000 ms. Triggering system reset.\r\n");
       vTaskDelay(pdMS_TO_TICKS(10)); // Small delay before reset
       NVIC_SystemReset(); // Trigger software reset
     }
@@ -135,13 +135,8 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  BinarySemaphore = xSemaphoreCreateBinary();
-  if (BinarySemaphore != NULL) {
-    xTaskCreate(TaskGive, "TaskGive", 128, NULL, tskIDLE_PRIORITY + 1, &TaskGiveHandle);
-    xTaskCreate(TaskTake, "TaskTake", 128, NULL, tskIDLE_PRIORITY + 2, &TaskTakeHandle);
-  } else {
-    printf("Failed to create semaphore\r\n");
-  }
+  xTaskCreate(TaskGive, "TaskGive", 128, NULL, tskIDLE_PRIORITY + 1, &TaskGiveHandle);
+  xTaskCreate(TaskTake, "TaskTake", 128, NULL, tskIDLE_PRIORITY + 2, &TaskTakeHandle);
   xTaskCreate(StartLedTask, "LedTask", 128, NULL, tskIDLE_PRIORITY + 1, &LedTaskHandle);
 
   printf("_\\||TP_FreeRTOS_SEHTEL_BEGUIN||//_");
