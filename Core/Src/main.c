@@ -48,6 +48,7 @@
 TaskHandle_t LedTaskHandle;
 TaskHandle_t TaskGiveHandle;
 TaskHandle_t TaskTakeHandle;
+xQueueHandle QueueTask;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -73,31 +74,32 @@ void StartLedTask(void *argument) {
     ledState = !ledState;
     HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, ledState ? GPIO_PIN_SET : GPIO_PIN_RESET);
     printf("LED : %s\r\n", ledState ? "ON" : "OFF");
-    vTaskDelay(pdMS_TO_TICKS(100)); // FreeRTOS delay
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
 void TaskGive(void *argument) {
   uint32_t delay = 100;
   for (;;) {
-    printf("TaskGive: About to notify TaskTake\r\n");
-    xTaskNotifyGive(TaskTakeHandle); // Send notification to TaskTake
-    printf("TaskGive: Notification sent\r\n");
-    vTaskDelay(pdMS_TO_TICKS(delay));
-    //delay += 100; // Increment delay for testing
+    printf("TaskGive: Sending delay value %lu to queue\r\n", delay);
+    if (xQueueSend(QueueTask, &delay, pdMS_TO_TICKS(100)) != pdPASS) {
+      printf("TaskGive: Failed to send delay value to queue\r\n");
+    }
+    delay += 100; // Increment delay
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
 void TaskTake(void *argument) {
+  uint32_t receivedValue = 0;
   for (;;) {
-    printf("TaskTake: Waiting for notification\r\n");
-    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000)); // Wait for notification
-    printf("TaskTake: Notification received\r\n");
-    // If timeout occurs, reset the system
-    if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000)) == pdFALSE) {
-      printf("TaskTake: Failed to receive notification for 1000 ms. Triggering system reset.\r\n");
-      vTaskDelay(pdMS_TO_TICKS(10)); // Small delay before reset
-      NVIC_SystemReset(); // Trigger software reset
+    printf("TaskTake: Waiting to receive value from queue\r\n");
+    if (xQueueReceive(QueueTask, &receivedValue, pdMS_TO_TICKS(1000)) == pdPASS) {
+      printf("TaskTake: Received delay value %lu from queue\r\n", receivedValue);
+    } else {
+      printf("TaskTake: Failed to receive value from queue within 1000 ms. Triggering system reset.\r\n");
+      vTaskDelay(pdMS_TO_TICKS(10));
+      NVIC_SystemReset(); // Trigger reset
     }
   }
 }
@@ -135,8 +137,14 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  QueueTask = xQueueCreate(10, sizeof(uint32_t)); // Create the queue
+  if (QueueTask == NULL) {
+    printf("Failed to create queue\r\n");
+    Error_Handler();
+  }
+
   xTaskCreate(TaskGive, "TaskGive", 128, NULL, tskIDLE_PRIORITY + 1, &TaskGiveHandle);
-  xTaskCreate(TaskTake, "TaskTake", 128, NULL, tskIDLE_PRIORITY + 2, &TaskTakeHandle);
+  xTaskCreate(TaskTake, "TaskTake", 128, NULL, tskIDLE_PRIORITY + 1, &TaskTakeHandle);
   xTaskCreate(StartLedTask, "LedTask", 128, NULL, tskIDLE_PRIORITY + 1, &LedTaskHandle);
 
   printf("_\\||TP_FreeRTOS_SEHTEL_BEGUIN||//_");
