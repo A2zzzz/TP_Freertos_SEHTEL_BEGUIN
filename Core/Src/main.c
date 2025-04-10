@@ -34,6 +34,12 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define STACK_SIZE 256
+#define TASK1_PRIORITY 1
+#define TASK2_PRIORITY 2
+#define TASK1_DELAY 1
+#define TASK2_DELAY 2
+
 
 /* USER CODE END PD */
 
@@ -49,6 +55,7 @@ TaskHandle_t LedTaskHandle;
 TaskHandle_t TaskGiveHandle;
 TaskHandle_t TaskTakeHandle;
 xQueueHandle QueueTask;
+SemaphoreHandle_t xMutex;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -81,7 +88,7 @@ void StartLedTask(void *argument) {
 
 void TaskGive(void *argument) {
   uint32_t delay = 100;
-  vTaskSuspend( NULL); // Suspend itself);
+  vTaskSuspend( NULL); // Suspend TaskGive
   for (;;) {
     printf("TaskGive: Sending delay value %lu to queue\r\n", delay);
     if (xQueueSend(QueueTask, &delay, pdMS_TO_TICKS(100)) != pdPASS) {
@@ -94,7 +101,7 @@ void TaskGive(void *argument) {
 
 void TaskTake(void *argument) {
   uint32_t receivedValue = 0;
-  vTaskSuspend( NULL); // Suspend itself);
+  vTaskSuspend( NULL); // Suspend TaskTake 
   for (;;) {
     printf("TaskTake: Waiting to receive value from queue\r\n");
     if (xQueueReceive(QueueTask, &receivedValue, pdMS_TO_TICKS(1000)) == pdPASS) {
@@ -107,6 +114,19 @@ void TaskTake(void *argument) {
     }
   }
 }
+
+
+void task_bug(void * pvParameters) {
+    int delay = (int) pvParameters;
+    for (;;) {
+        if (xSemaphoreTake(xMutex, portMAX_DELAY) == pdTRUE) { 
+            printf("Je suis %s et je m'endors pour %d ticks\r\n", pcTaskGetName(NULL), delay);
+            xSemaphoreGive(xMutex);
+        }
+        vTaskDelay(delay);
+    }
+}
+
 
 /* USER CODE END 0 */
 
@@ -141,9 +161,15 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  QueueTask = xQueueCreate(10, sizeof(uint32_t)); // Create the queue
+  QueueTask = xQueueCreate(10, sizeof(uint32_t)); // Queue
   if (QueueTask == NULL) {
     printf("Failed to create queue\r\n");
+    Error_Handler();
+  }
+
+  xMutex = xSemaphoreCreateMutex(); // Mutex
+  if (xMutex == NULL) {
+    printf("Failed to create Mutex\r\n");
     Error_Handler();
   }
 
@@ -151,7 +177,15 @@ int main(void)
   xTaskCreate(TaskTake, "TaskTake", 128, NULL, tskIDLE_PRIORITY + 1, &TaskTakeHandle);
   xTaskCreate(StartLedTask, "LedTask", 128, NULL, tskIDLE_PRIORITY + 1, &LedTaskHandle);
 
-  printf("_\\||TP_FreeRTOS_SEHTEL_BEGUIN||//_");
+  BaseType_t ret;
+  ret = xTaskCreate(task_bug, "Tache 1", STACK_SIZE,(void *) TASK1_DELAY, TASK1_PRIORITY, NULL);
+  configASSERT(pdPASS == ret);
+  ret = xTaskCreate(task_bug, "Tache 2", STACK_SIZE,(void *) TASK2_DELAY, TASK2_PRIORITY, NULL);
+  configASSERT(pdPASS == ret);
+
+
+
+  printf("_\\||TP_FreeRTOS_SEHTEL_BEGUIN||//_\n");
 
   /* USER CODE END 2 */
 
